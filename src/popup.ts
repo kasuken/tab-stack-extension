@@ -1,133 +1,189 @@
-// Popup script
-console.log('Popup script loaded')
+// TabStack Popup Script
+console.log('TabStack popup loaded')
 
-interface TabInfo {
-  title: string
-  url: string
-  selectedText: string
+interface WindowData {
+  windowId: number
+  tabs: chrome.tabs.Tab[]
+  focused: boolean
 }
 
-interface StorageData {
-  extensionEnabled?: boolean
-  theme?: string
+interface SearchResponse {
+  type: 'searchResults'
+  results: WindowData[]
 }
 
 // DOM elements
-const tabInfoDiv = document.getElementById('tab-info') as HTMLDivElement
-const highlightBtn = document.getElementById('highlight-btn') as HTMLButtonElement
-const getInfoBtn = document.getElementById('get-info-btn') as HTMLButtonElement
-const enabledCheckbox = document.getElementById('enabled-checkbox') as HTMLInputElement
-const themeSelect = document.getElementById('theme-select') as HTMLSelectElement
-const statusDiv = document.getElementById('status') as HTMLDivElement
+const searchInput = document.getElementById('search-input') as HTMLInputElement
+const resultsCount = document.getElementById('results-count') as HTMLSpanElement
+const closeAllBtn = document.getElementById('close-all-btn') as HTMLButtonElement
+const resultsContainer = document.getElementById('results-container') as HTMLDivElement
+
+let currentResults: WindowData[] = []
+let searchQuery = ''
 
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadSettings()
-  await getCurrentTabInfo()
+  await performSearch('')
   setupEventListeners()
 })
 
-// Load settings from storage
-async function loadSettings(): Promise<void> {
-  try {
-    const data = await chrome.storage.sync.get(['extensionEnabled', 'theme']) as StorageData
-    
-    enabledCheckbox.checked = data.extensionEnabled !== false
-    themeSelect.value = data.theme || 'light'
-    
-    // Apply theme
-    applyTheme(data.theme || 'light')
-  } catch (error) {
-    console.error('Error loading settings:', error)
-  }
-}
-
-// Get current tab information
-async function getCurrentTabInfo(): Promise<void> {
-  try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
-    const currentTab = tabs[0]
-    
-    if (currentTab) {
-      const tabInfo = `
-        <strong>Title:</strong> ${currentTab.title}<br>
-        <strong>URL:</strong> ${currentTab.url}<br>
-        <strong>ID:</strong> ${currentTab.id}
-      `
-      tabInfoDiv.innerHTML = tabInfo
-    }
-  } catch (error) {
-    console.error('Error getting tab info:', error)
-    tabInfoDiv.textContent = 'Error loading tab information'
-  }
-}
-
 // Setup event listeners
 function setupEventListeners(): void {
-  highlightBtn.addEventListener('click', async () => {
-    await sendMessageToActiveTab('highlightText')
-    showStatus('Text highlighting triggered!', 'success')
+  // Debounced search
+  let searchTimeout: number
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimeout)
+    searchTimeout = window.setTimeout(() => {
+      searchQuery = searchInput.value
+      performSearch(searchQuery)
+    }, 150)
   })
   
-  getInfoBtn.addEventListener('click', async () => {
-    const response = await sendMessageToActiveTab('getPageInfo') as TabInfo
-    if (response) {
-      const info = `
-        <strong>Title:</strong> ${response.title}<br>
-        <strong>URL:</strong> ${response.url}<br>
-        <strong>Selected:</strong> ${response.selectedText || 'None'}
-      `
-      tabInfoDiv.innerHTML = info
-      showStatus('Page info updated!', 'success')
+  // Close all results
+  closeAllBtn.addEventListener('click', async () => {
+    const tabIds = currentResults.flatMap(w => w.tabs.map(t => t.id!).filter(id => id !== undefined))
+    if (tabIds.length > 0 && confirm(`Close ${tabIds.length} tab(s)?`)) {
+      await sendMessage({ type: 'closeTabs', tabIds })
     }
-  })
-  
-  enabledCheckbox.addEventListener('change', async () => {
-    await chrome.storage.sync.set({ extensionEnabled: enabledCheckbox.checked })
-    showStatus('Settings saved!', 'success')
-  })
-  
-  themeSelect.addEventListener('change', async () => {
-    const theme = themeSelect.value
-    await chrome.storage.sync.set({ theme })
-    applyTheme(theme)
-    showStatus('Theme updated!', 'success')
   })
 }
 
-// Send message to active tab
-async function sendMessageToActiveTab(action: string, data?: any): Promise<any> {
+// Perform search
+async function performSearch(query: string): Promise<void> {
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
-    const activeTab = tabs[0]
-    
-    if (activeTab?.id) {
-      return await chrome.tabs.sendMessage(activeTab.id, { action, data })
+    const response = await sendMessage({ type: 'search', query }) as SearchResponse
+    if (response && response.results) {
+      currentResults = response.results
+      renderResults(response.results, query)
     }
   } catch (error) {
-    console.error('Error sending message to tab:', error)
-    showStatus('Error communicating with page', 'error')
+    console.error('Error searching tabs:', error)
+    resultsCount.textContent = 'Error loading tabs'
   }
 }
 
-// Apply theme
-function applyTheme(theme: string): void {
-  if (theme === 'dark') {
-    document.body.classList.add('dark-theme')
-  } else {
-    document.body.classList.remove('dark-theme')
-  }
-}
-
-// Show status message
-function showStatus(message: string, type: 'success' | 'error' | 'info'): void {
-  statusDiv.textContent = message
-  statusDiv.className = `status ${type}`
+// Render search results
+function renderResults(results: WindowData[], query: string): void {
+  const totalTabs = results.reduce((sum, w) => sum + w.tabs.length, 0)
   
-  setTimeout(() => {
-    statusDiv.textContent = ''
-    statusDiv.className = 'status'
-  }, 3000)
+  // Update header
+  if (query) {
+    resultsCount.textContent = `Found ${totalTabs} tab(s)`
+    closeAllBtn.style.display = totalTabs > 0 ? 'block' : 'none'
+  } else {
+    resultsCount.textContent = `${totalTabs} tab(s) across ${results.length} window(s)`
+    closeAllBtn.style.display = 'none'
+  }
+  
+  // Clear previous results
+  resultsContainer.innerHTML = ''
+  
+  if (totalTabs === 0) {
+    resultsContainer.innerHTML = '<div class="no-results">No tabs found</div>'
+    return
+  }
+  
+  // Render each window
+  results.forEach((windowData, index) => {
+    const windowDiv = document.createElement('div')
+    windowDiv.className = 'window-group'
+    
+    const windowHeader = document.createElement('div')
+    windowHeader.className = 'window-header'
+    windowHeader.innerHTML = `
+      <span class="window-title">
+        ${windowData.focused ? '🔵' : '⚪'} Window ${index + 1}
+        <span class="tab-count">(${windowData.tabs.length} tabs)</span>
+      </span>
+    `
+    windowDiv.appendChild(windowHeader)
+    
+    // Render tabs
+    windowData.tabs.forEach(tab => {
+      const tabItem = createTabItem(tab)
+      windowDiv.appendChild(tabItem)
+    })
+    
+    resultsContainer.appendChild(windowDiv)
+  })
+}
+
+// Create tab item element
+function createTabItem(tab: chrome.tabs.Tab): HTMLElement {
+  const tabDiv = document.createElement('div')
+  tabDiv.className = 'tab-item'
+  
+  const favicon = tab.favIconUrl || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><text y="14" font-size="14">📄</text></svg>'
+  
+  tabDiv.innerHTML = `
+    <img class="tab-favicon" src="${favicon}" alt="" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text y=%2214%22 font-size=%2214%22>📄</text></svg>'">
+    <div class="tab-info">
+      <div class="tab-title">${escapeHtml(tab.title || 'Untitled')}</div>
+      <div class="tab-url">${escapeHtml(truncateUrl(tab.url || ''))}</div>
+    </div>
+    <button class="tab-close-btn" title="Close tab">✕</button>
+  `
+  
+  // Click to focus tab
+  tabDiv.addEventListener('click', async (e) => {
+    if (!(e.target as HTMLElement).classList.contains('tab-close-btn')) {
+      await sendMessage({ type: 'focusTab', tabId: tab.id, windowId: tab.windowId })
+      window.close()
+    }
+  })
+  
+  // Close button
+  const closeBtn = tabDiv.querySelector('.tab-close-btn') as HTMLButtonElement
+  closeBtn.addEventListener('click', async (e) => {
+    e.stopPropagation()
+    await sendMessage({ type: 'closeTab', tabId: tab.id })
+    tabDiv.remove()
+    
+    // Update count
+    currentResults = currentResults.map(w => ({
+      ...w,
+      tabs: w.tabs.filter(t => t.id !== tab.id)
+    })).filter(w => w.tabs.length > 0)
+    
+    const totalTabs = currentResults.reduce((sum, w) => sum + w.tabs.length, 0)
+    if (searchQuery) {
+      resultsCount.textContent = `Found ${totalTabs} tab(s)`
+    } else {
+      resultsCount.textContent = `${totalTabs} tab(s) across ${currentResults.length} window(s)`
+    }
+  })
+  
+  return tabDiv
+}
+
+// Send message to background script
+async function sendMessage(message: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError)
+      } else {
+        resolve(response)
+      }
+    })
+  })
+}
+
+// Utility functions
+function escapeHtml(text: string): string {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
+function truncateUrl(url: string): string {
+  try {
+    const urlObj = new URL(url)
+    const path = urlObj.pathname + urlObj.search
+    return urlObj.hostname + (path.length > 40 ? path.substring(0, 40) + '...' : path)
+  } catch {
+    return url.length > 60 ? url.substring(0, 60) + '...' : url
+  }
 }
 
 export {}

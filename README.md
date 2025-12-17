@@ -1,16 +1,66 @@
-# Chrome/Edge Extension TypeScript Template
+# TabStack - Advanced Tab Manager
 
-A modern, well-structured template for building Chrome and Edge browser extensions using TypeScript and Vite.
+A powerful Chrome/Edge extension for managing browser tabs with smart search, grouping, and bulk operations. Built with TypeScript and Vite.
 
 ## Features
 
+- 🔍 **Smart Search** - Instantly filter tabs by title and URL across all windows
+- 📊 **Tab Organization** - Automatic grouping by window with visual hierarchy
+- ⚡ **Quick Actions** - Focus, close, or bulk manage tabs with ease
+- 🔄 **Real-time Sync** - Automatic updates as tabs are created, moved, or closed
+- 🎯 **Bulk Operations** - Select multiple tabs and close them in one action
+- 📱 **Dual Interface** - Fast popup for quick access + full dashboard for power users
 - 🚀 **Fast Development** - Powered by Vite for instant hot reload
 - 📦 **TypeScript** - Full TypeScript support with strict typing
 - 🎯 **Manifest V3** - Uses the latest extension manifest version
-- 🔧 **Pre-configured** - Ready-to-use setup with all necessary configurations
-- 🎨 **Modern UI** - Clean popup interface with dark/light theme support
-- 📱 **Cross-browser** - Compatible with both Chrome and Edge
-- 🛠️ **Developer Tools** - Comprehensive build scripts and development workflow
+
+## Core Capabilities
+
+### Tab Indexing & Organization
+- **Automatic Indexing**: Uses `chrome.tabs.query({})` to list all tabs
+- **Window Grouping**: Tabs are automatically grouped by `windowId` for better organization
+- **In-memory Model**: Fast, efficient data structure for instant access
+
+### Search & Filter
+- **Local-only Search**: Privacy-focused filtering by tab title and URL
+- **Real-time Results**: Instant updates as you type
+- **Multi-criteria**: Search across both title and URL simultaneously
+
+### Tab Actions
+- **Focus Tab**: `chrome.tabs.update(tabId, { active: true })` + window focus
+- **Close Tabs**: Single or bulk close operations with `chrome.tabs.remove([...ids])`
+- **Close All Results**: Quickly close all tabs matching current search filter
+- **Select Mode**: Checkbox selection for granular bulk operations
+
+### Real-time Synchronization
+Subscribes to Chrome events for automatic updates:
+
+**Tab Events:**
+- `tabs.onCreated` - New tab opened
+- `tabs.onRemoved` - Tab closed
+- `tabs.onUpdated` - Tab title/URL changed
+- `tabs.onMoved` - Tab reordered
+- `tabs.onAttached` - Tab moved to different window
+- `tabs.onDetached` - Tab removed from window
+
+**Window Events:**
+- `windows.onCreated` - New window opened
+- `windows.onRemoved` - Window closed
+- `windows.onFocusChanged` - Different window focused
+
+## User Interface
+
+### Popup (popup.html)
+- **Quick Access**: Click extension icon for instant tab search
+- **Search Box**: Filter tabs in real-time
+- **Results List**: Compact view of matching tabs
+- **Fast Actions**: Quickly focus or close tabs
+
+### Dashboard (dashboard.html)
+- **Full-page View**: `chrome-extension://<id>/dashboard.html`
+- **Privacy-focused**: Internal extension page (no external sites)
+- **Enhanced Features**: Advanced filtering, bulk operations, and analytics
+- **Better UX**: More screen space for managing large tab collections
 
 ## Quick Start
 
@@ -33,15 +83,50 @@ A modern, well-structured template for building Chrome and Edge browser extensio
 ```
 src/
 ├── manifest.json       # Extension manifest (V3)
-├── background.ts       # Service worker
-├── content.ts          # Content script
-├── popup.html          # Popup UI
-├── popup.ts           # Popup logic
+├── background.ts       # Service worker - tab indexing & event listeners
+├── popup.html          # Popup UI - quick search interface
+├── popup.ts           # Popup logic - search & basic actions
 ├── popup.css          # Popup styles
-├── injected.ts        # Page context script (optional)
+├── dashboard.html     # Full dashboard UI (planned)
+├── dashboard.ts       # Dashboard logic - advanced features (planned)
+├── dashboard.css      # Dashboard styles (planned)
 └── icons/             # Extension icons
     └── README.md      # Icon guidelines
 ```
+
+## Architecture
+
+### Background Service Worker (background.ts)
+**Primary responsibilities:**
+- **Tab Indexing**: Query and maintain in-memory tab model grouped by window
+- **Event Subscriptions**: Listen to all tab and window events
+- **State Management**: Keep tab index synchronized in real-time
+- **Message Handling**: Respond to requests from popup/dashboard
+
+**Key APIs used:**
+- `chrome.tabs.query({})` - Initial tab indexing
+- `chrome.tabs.*` event listeners - Real-time sync
+- `chrome.windows.*` event listeners - Window tracking
+- `chrome.runtime.onMessage` - Communication with UI
+
+### Popup Interface (popup.html/ts)
+**Quick access features:**
+- Search input with real-time filtering
+- Results list showing matching tabs
+- Click to focus tab
+- Close button for individual tabs
+- "Close all results" for bulk operations
+
+### Dashboard Interface (dashboard.html/ts)
+**Advanced features:**
+- Full-page extension view (`chrome-extension://<id>/dashboard.html`)
+- Enhanced search with multiple filters
+- Select mode with checkboxes for bulk operations
+- Visual grouping by window
+- Tab statistics and analytics
+- Better performance with large tab collections
+
+**Privacy advantage:** Internal extension page keeps all data local, no external dependencies
 
 ## Available Scripts
 
@@ -113,38 +198,68 @@ Builds the extension and creates a `extension.zip` file ready for Chrome Web Sto
 ## Extension Components
 
 ### Background Script (`background.ts`)
-- Service worker that runs in the background
-- Handles extension lifecycle events
-- Manages cross-tab communication
-- Example: Installation handling, context menus, message passing
+**TabStack's core engine:**
+- Maintains in-memory tab index grouped by `windowId`
+- Subscribes to all tab/window events for real-time sync
+- Handles search queries and returns filtered results
+- Executes tab actions (focus, close, bulk operations)
 
-### Content Script (`content.ts`)
-- Runs in the context of web pages
-- Can access and modify page DOM
-- Communicates with background script and popup
-- Example: Text highlighting, page data extraction
+**Event handlers:**
+```typescript
+chrome.tabs.onCreated.addListener()    // Add new tab to index
+chrome.tabs.onRemoved.addListener()    // Remove tab from index
+chrome.tabs.onUpdated.addListener()    // Update tab metadata
+chrome.tabs.onMoved.addListener()      // Update tab position
+chrome.tabs.onAttached.addListener()   // Handle tab moved to window
+chrome.tabs.onDetached.addListener()   // Handle tab removed from window
+chrome.windows.onCreated.addListener() // Track new windows
+chrome.windows.onRemoved.addListener() // Clean up closed windows
+chrome.windows.onFocusChanged.addListener() // Track active window
+```
 
 ### Popup (`popup.html`, `popup.ts`, `popup.css`)
-- Extension's popup interface
-- Activated when clicking the extension icon
-- Includes settings, current tab info, and action buttons
-- Features dark/light theme support
+**Fast-path interface:**
+- Search box with real-time filtering
+- Compact results list grouped by window
+- Quick actions: focus tab (click) or close (button)
+- "Close all results" button for current filter
+- Communicates with background script for tab data and actions
 
-### Injected Script (`injected.ts`)
-- Optional script that runs in page context
-- Has access to page variables and functions
-- Useful for deep page integration
-- Communicates with content script via custom events
+### Dashboard (`dashboard.html`, `dashboard.ts`, `dashboard.css`)
+**Power-user interface:**
+- Full-page internal view at `chrome-extension://<id>/dashboard.html`
+- Advanced search with multiple criteria
+- Select mode with checkboxes for bulk operations
+- Visual window grouping with statistics
+- Enhanced tab management features
+- Better performance for users with many tabs
+
+**Why internal page?**
+- Privacy: All data stays local, no external sites
+- Security: Full extension privileges
+- Performance: Direct access to background script
+- Reliability: No external dependencies or network calls
 
 ## Configuration
 
 ### Manifest (`src/manifest.json`)
 The extension manifest defines:
-- Extension metadata and permissions
-- Background script configuration
-- Content script injection rules
-- Popup and icon definitions
-- Web accessible resources
+- Extension metadata (name: "TabStack")
+- **Required permissions**: `"tabs"`, `"storage"` (for settings)
+- **Optional host permissions**: None needed (privacy-focused, local-only)
+- Background service worker configuration
+- Popup and dashboard page definitions
+- Action icon and toolbar integration
+
+**Key permissions:**
+```json
+{
+  "permissions": [
+    "tabs",      // Required for tab querying and management
+    "storage"    // For user preferences and settings
+  ]
+}
+```
 
 ### Vite Configuration (`vite.config.ts`)
 - Configures Vite for extension building
