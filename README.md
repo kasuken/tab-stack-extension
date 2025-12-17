@@ -171,6 +171,12 @@ Access the dashboard by:
 - **Enhanced Search**: Filter across all tabs with real-time results
 - **Statistics**: View total tab count and window count at a glance
 - **Grid View**: See more tabs at once with card-based layout
+- **Tab Metadata**: Rich information about each tab:
+  - ⏱️ **Time since opened** - See how long tabs have been open (e.g., "2h ago", "3d ago")
+  - 👁️ **Last accessed** - When you last viewed inactive tabs
+  - 📌 **Pinned status** - Visual indicator for pinned tabs
+  - 🔊 **Audio state** - Shows if tab is playing audio or muted
+  - 💤 **Discarded tabs** - Identifies tabs saved to memory for performance
 
 ## Available Scripts
 

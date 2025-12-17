@@ -2,6 +2,11 @@
 console.log('TabStack background script loaded')
 
 // Tab index data structure
+interface TabMetadata {
+  createdAt: number
+  lastAccessed?: number
+}
+
 interface WindowData {
   windowId: number
   tabs: chrome.tabs.Tab[]
@@ -13,11 +18,14 @@ interface TabIndex {
   lastUpdated: number
 }
 
-// In-memory tab index
+// In-memory tab index and metadata
 const tabIndex: TabIndex = {
   windows: new Map<number, WindowData>(),
   lastUpdated: Date.now()
 }
+
+// Track tab metadata (creation time, etc.)
+const tabMetadata = new Map<number, TabMetadata>()
 
 // Initialize tab index on startup
 initializeTabIndex()
@@ -25,17 +33,31 @@ initializeTabIndex()
 async function initializeTabIndex(): Promise<void> {
   try {
     const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] })
+    const now = Date.now()
     
     for (const window of windows) {
+      const tabs = window.tabs || []
+      
+      // Initialize metadata for existing tabs
+      tabs.forEach(tab => {
+        if (tab.id && !tabMetadata.has(tab.id)) {
+          tabMetadata.set(tab.id, {
+            createdAt: now,
+            lastAccessed: tab.active ? now : undefined
+          })
+        }
+      })
+      
       tabIndex.windows.set(window.id!, {
         windowId: window.id!,
-        tabs: window.tabs || [],
+        tabs,
         focused: window.focused || false
       })
     }
     
     tabIndex.lastUpdated = Date.now()
     console.log('Tab index initialized:', tabIndex.windows.size, 'windows')
+    console.log('Tab metadata initialized for', tabMetadata.size, 'tabs')
   } catch (error) {
     console.error('Error initializing tab index:', error)
   }
@@ -74,6 +96,15 @@ chrome.tabs.onCreated.addListener((tab) => {
   if (tab.windowId && tabIndex.windows.has(tab.windowId)) {
     const windowData = tabIndex.windows.get(tab.windowId)!
     windowData.tabs.push(tab)
+    
+    // Track creation time
+    if (tab.id) {
+      tabMetadata.set(tab.id, {
+        createdAt: Date.now(),
+        lastAccessed: tab.active ? Date.now() : undefined
+      })
+    }
+    
     tabIndex.lastUpdated = Date.now()
   }
 })
@@ -84,14 +115,26 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
     windowData.tabs = windowData.tabs.filter(tab => tab.id !== tabId)
     tabIndex.lastUpdated = Date.now()
   }
+  
+  // Clean up metadata
+  tabMetadata.delete(tabId)
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tab.windowId && tabIndex.windows.has(tab.windowId)) {
     const windowData = tabIndex.windows.get(tab.windowId)!
-    const tabIndex2 = windowData.tabs.findIndex(t => t.id === tabId)
-    if (tabIndex2 !== -1) {
-      windowData.tabs[tabIndex2] = tab
+    const tabIdx = windowData.tabs.findIndex(t => t.id === tabId)
+    if (tabIdx !== -1) {
+      windowData.tabs[tabIdx] = tab
+      
+      // Update last accessed time if tab became active
+      if (tab.active) {
+        const metadata = tabMetadata.get(tabId)
+        if (metadata) {
+          metadata.lastAccessed = Date.now()
+        }
+      }
+      
       tabIndex.lastUpdated = Date.now()
     }
   }
@@ -184,6 +227,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'getIndex') {
     const results = Array.from(tabIndex.windows.values())
     sendResponse({ type: 'indexUpdate', results })
+    return true
+  }
+  
+  if (request.type === 'getMetadata') {
+    const metadata: Record<number, TabMetadata> = {}
+    tabMetadata.forEach((value, key) => {
+      metadata[key] = value
+    })
+    console.log('Sending metadata for', Object.keys(metadata).length, 'tabs')
+    sendResponse({ type: 'metadata', metadata })
     return true
   }
 })

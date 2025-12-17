@@ -1,6 +1,11 @@
 // TabStack Dashboard Script
 console.log('TabStack dashboard loaded')
 
+interface TabMetadata {
+  createdAt: number
+  lastAccessed?: number
+}
+
 interface WindowData {
   windowId: number
   tabs: chrome.tabs.Tab[]
@@ -10,6 +15,11 @@ interface WindowData {
 interface SearchResponse {
   type: 'searchResults'
   results: WindowData[]
+}
+
+interface MetadataResponse {
+  type: 'metadata'
+  metadata: Record<number, TabMetadata>
 }
 
 // DOM elements
@@ -31,15 +41,48 @@ let currentResults: WindowData[] = []
 let searchQuery = ''
 let selectModeActive = false
 let selectedTabIds = new Set<number>()
+let tabMetadata: Record<number, TabMetadata> = {}
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', async () => {
+  await loadMetadata()
   await performSearch('')
   setupEventListeners()
 })
 
+// Load tab metadata
+async function loadMetadata(): Promise<void> {
+  try {
+    const response = await sendMessage({ type: 'getMetadata' }) as MetadataResponse
+    if (response && response.metadata) {
+      tabMetadata = response.metadata
+      console.log('Loaded metadata for', Object.keys(tabMetadata).length, 'tabs')
+    } else {
+      console.warn('No metadata received from background script')
+    }
+  } catch (error) {
+    console.error('Error loading metadata:', error)
+  }
+}
+
 // Setup event listeners
 function setupEventListeners(): void {
+  // Refresh data when dashboard comes into focus
+  window.addEventListener('focus', async () => {
+    console.log('Dashboard focused - refreshing data')
+    await loadMetadata()
+    await performSearch(searchQuery)
+  })
+  
+  // Also listen for visibility change (when tab becomes visible)
+  document.addEventListener('visibilitychange', async () => {
+    if (!document.hidden) {
+      console.log('Dashboard visible - refreshing data')
+      await loadMetadata()
+      await performSearch(searchQuery)
+    }
+  })
+  
   // Debounced search
   let searchTimeout: number
   searchInput.addEventListener('input', () => {
@@ -69,6 +112,7 @@ function setupEventListeners(): void {
   // Refresh
   refreshBtn.addEventListener('click', async () => {
     refreshBtn.classList.add('spinning')
+    await loadMetadata()
     await performSearch(searchQuery)
     setTimeout(() => refreshBtn.classList.remove('spinning'), 500)
   })
@@ -79,6 +123,7 @@ function setupEventListeners(): void {
     if (count > 0 && confirm(`Close ${count} selected tab(s)?`)) {
       await sendMessage({ type: 'closeTabs', tabIds: Array.from(selectedTabIds) })
       selectedTabIds.clear()
+      await loadMetadata()
       await performSearch(searchQuery)
     }
   })
@@ -167,7 +212,23 @@ function renderResults(results: WindowData[], query: string): void {
   
   // Render each window
   results.forEach((windowData, index) => {
-    const windowCard = createWindowCard(windowData, index)
+    // Sort tabs by most recently accessed/opened (most recent first)
+    const sortedWindowData = {
+      ...windowData,
+      tabs: [...windowData.tabs].sort((a, b) => {
+        const aMetadata = a.id ? tabMetadata[a.id] : null
+        const bMetadata = b.id ? tabMetadata[b.id] : null
+        
+        // Get the most recent timestamp for each tab (lastAccessed or createdAt)
+        const aTime = aMetadata?.lastAccessed || aMetadata?.createdAt || 0
+        const bTime = bMetadata?.lastAccessed || bMetadata?.createdAt || 0
+        
+        // Sort descending (most recent first)
+        return bTime - aTime
+      })
+    }
+    
+    const windowCard = createWindowCard(sortedWindowData, index)
     resultsContainer.appendChild(windowCard)
   })
 }
@@ -218,6 +279,7 @@ function createWindowCard(windowData: WindowData, index: number): HTMLElement {
   closeWindowBtn.addEventListener('click', async () => {
     if (confirm(`Close all ${tabCount} tabs in this window?`)) {
       await chrome.windows.remove(windowData.windowId)
+      await loadMetadata()
       await performSearch(searchQuery)
     }
   })
@@ -250,6 +312,27 @@ function createTabCard(tab: chrome.tabs.Tab): HTMLElement {
   
   const favicon = tab.favIconUrl || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><text y="14" font-size="14">📄</text></svg>'
   
+  // Get metadata for this tab
+  const metadata = tab.id ? tabMetadata[tab.id] : null
+  const tabAge = metadata ? formatTimeAgo(metadata.createdAt) : null
+  const lastAccessed = metadata?.lastAccessed ? formatTimeAgo(metadata.lastAccessed) : null
+  
+  // Debug logging
+  if (tab.id) {
+    if (!metadata) {
+      console.log('❌ No metadata for tab', tab.id, tab.title)
+    } else {
+      console.log('✅ Tab', tab.id, 'metadata:', { tabAge, lastAccessed, createdAt: new Date(metadata.createdAt).toISOString() })
+    }
+  }
+  
+  // Build badges
+  const badges: string[] = []
+  if (tab.pinned) badges.push('<span class="tab-badge pinned" title="Pinned">📌</span>')
+  if (tab.audible) badges.push('<span class="tab-badge audio" title="Playing audio">🔊</span>')
+  if (tab.mutedInfo?.muted) badges.push('<span class="tab-badge muted" title="Muted">🔇</span>')
+  if (tab.discarded) badges.push('<span class="tab-badge discarded" title="Discarded (memory saved)">💤</span>')
+  
   tabCard.innerHTML = `
     ${selectModeActive ? `
       <div class="tab-checkbox-container">
@@ -261,6 +344,11 @@ function createTabCard(tab: chrome.tabs.Tab): HTMLElement {
       <div class="tab-card-info">
         <div class="tab-card-title">${escapeHtml(tab.title || 'Untitled')}</div>
         <div class="tab-card-url">${escapeHtml(truncateUrl(tab.url || '', 50))}</div>
+        <div class="tab-card-meta">
+          ${tabAge ? `<span class="meta-item" title="Opened ${tabAge}">⏱️ ${tabAge}</span>` : `<span class="meta-item" title="No timing data">⏱️ N/A</span>`}
+          ${lastAccessed && !tab.active ? `<span class="meta-item" title="Last accessed ${lastAccessed}">👁️ ${lastAccessed}</span>` : ''}
+          ${badges.length > 0 ? `<span class="tab-badges">${badges.join('')}</span>` : ''}
+        </div>
       </div>
     </div>
     <div class="tab-card-actions">
@@ -318,6 +406,12 @@ function createTabCard(tab: chrome.tabs.Tab): HTMLElement {
   closeBtn.addEventListener('click', async (e) => {
     e.stopPropagation()
     await sendMessage({ type: 'closeTab', tabId: tab.id })
+    
+    // Remove from metadata
+    if (tab.id) {
+      delete tabMetadata[tab.id]
+    }
+    
     tabCard.remove()
     
     // Update results
@@ -365,6 +459,25 @@ function truncateUrl(url: string, maxLength: number): string {
   } catch {
     return url.length > maxLength ? url.substring(0, maxLength) + '...' : url
   }
+}
+
+function formatTimeAgo(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+  const weeks = Math.floor(days / 7)
+  const months = Math.floor(days / 30)
+  
+  if (seconds < 60) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  if (days < 7) return `${days}d ago`
+  if (weeks < 4) return `${weeks}w ago`
+  return `${months}mo ago`
 }
 
 export {}
