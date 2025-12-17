@@ -128,6 +128,50 @@ src/
 
 **Privacy advantage:** Internal extension page keeps all data local, no external dependencies
 
+## Quick Start
+
+### Installation
+1. **Build the extension:**
+   ```bash
+   npm install
+   npm run build
+   ```
+
+2. **Load in browser:**
+   - Open Chrome/Edge and navigate to `chrome://extensions/` (or `edge://extensions/`)
+   - Enable "Developer mode" (toggle in top-right corner)
+   - Click "Load unpacked"
+   - Select the `dist` folder from this project
+
+### Using TabStack
+
+#### Popup Interface (Quick Access)
+1. Click the TabStack extension icon in your browser toolbar
+2. **Search**: Type in the search box to filter tabs by title or URL
+3. **Focus Tab**: Click on any tab in the results to switch to it
+4. **Close Tab**: Click the ✕ button next to a tab to close it
+5. **Bulk Close**: Use "Close All Results" to close all filtered tabs at once
+6. **Open Dashboard**: Click the "Dashboard" button for advanced features
+
+#### Dashboard (Power User Features)
+Access the dashboard by:
+- Clicking "Dashboard" button in the popup, or
+- Navigating to `chrome-extension://<your-extension-id>/dashboard.html`
+
+**Dashboard Features:**
+- **Select Mode**: Click "Select Mode" to enable multi-tab selection with checkboxes
+- **Bulk Operations**:
+  - ☑️ Select individual tabs or use "Select All" for entire windows
+  - ✕ "Close Selected" - Close all selected tabs at once
+  - 🪟 "Move to New Window" - Move selected tabs to a new browser window
+- **Window Management**: 
+  - View tabs organized by window
+  - Close entire windows
+  - See which window is currently focused (🔵 indicator)
+- **Enhanced Search**: Filter across all tabs with real-time results
+- **Statistics**: View total tab count and window count at a glance
+- **Grid View**: See more tabs at once with card-based layout
+
 ## Available Scripts
 
 | Command | Description |

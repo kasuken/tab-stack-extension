@@ -9,6 +9,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(__dirname, 'src/popup.html'),
+        dashboard: resolve(__dirname, 'src/dashboard.html'),
         background: resolve(__dirname, 'src/background.ts'),
         content: resolve(__dirname, 'src/content.ts'),
         injected: resolve(__dirname, 'src/injected.ts'),
@@ -38,6 +39,11 @@ export default defineConfig({
         
         // Copy manifest.json to dist
         copyFileSync('src/manifest.json', 'dist/manifest.json')
+        
+        // Copy HTML files if they're not already in dist
+        if (!existsSync('dist/dashboard.html') && existsSync('src/dashboard.html')) {
+          copyFileSync('src/dashboard.html', 'dist/dashboard.html')
+        }
         
         // Copy icons directory
         if (existsSync('src/icons')) {

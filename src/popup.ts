@@ -17,6 +17,7 @@ const searchInput = document.getElementById('search-input') as HTMLInputElement
 const resultsCount = document.getElementById('results-count') as HTMLSpanElement
 const closeAllBtn = document.getElementById('close-all-btn') as HTMLButtonElement
 const resultsContainer = document.getElementById('results-container') as HTMLDivElement
+const openDashboardBtn = document.getElementById('open-dashboard-btn') as HTMLButtonElement
 
 let currentResults: WindowData[] = []
 let searchQuery = ''
@@ -29,6 +30,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Setup event listeners
 function setupEventListeners(): void {
+  // Dashboard button
+  openDashboardBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') })
+  })
+  
   // Debounced search
   let searchTimeout: number
   searchInput.addEventListener('input', () => {

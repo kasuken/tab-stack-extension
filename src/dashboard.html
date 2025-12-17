@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TabStack Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="dashboard-container">
+    <!-- Header -->
+    <header class="dashboard-header">
+      <div class="header-content">
+        <h1>🗂️ TabStack Dashboard</h1>
+        <div class="header-stats">
+          <span id="total-tabs-stat" class="stat-item">0 tabs</span>
+          <span class="stat-separator">•</span>
+          <span id="total-windows-stat" class="stat-item">0 windows</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="search-container">
+        <input 
+          type="text" 
+          id="search-input" 
+          class="search-input" 
+          placeholder="Search tabs by title or URL..."
+          autocomplete="off"
+        >
+      </div>
+      
+      <div class="toolbar-actions">
+        <button id="select-mode-btn" class="toolbar-btn">
+          <span class="btn-icon">☑️</span>
+          Select Mode
+        </button>
+        <button id="refresh-btn" class="toolbar-btn">
+          <span class="btn-icon">🔄</span>
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Bulk Actions Bar (hidden by default) -->
+    <div id="bulk-actions-bar" class="bulk-actions-bar" style="display: none;">
+      <div class="bulk-actions-content">
+        <span id="selected-count" class="selected-count">0 tabs selected</span>
+        <div class="bulk-actions-buttons">
+          <button id="close-selected-btn" class="bulk-action-btn danger">
+            <span class="btn-icon">✕</span>
+            Close Selected
+          </button>
+          <button id="move-to-new-window-btn" class="bulk-action-btn">
+            <span class="btn-icon">🪟</span>
+            Move to New Window
+          </button>
+          <button id="deselect-all-btn" class="bulk-action-btn secondary">
+            Clear Selection
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="dashboard-main">
+      <div id="results-container" class="results-container">
+        <!-- Windows and tabs will be populated here -->
+      </div>
+      
+      <div id="empty-state" class="empty-state" style="display: none;">
+        <div class="empty-icon">🔍</div>
+        <h2>No tabs found</h2>
+        <p>Try adjusting your search query</p>
+      </div>
+    </main>
+  </div>
+  
+  <script src="dashboard.js" type="module"></script>
+</body>
+</html>
