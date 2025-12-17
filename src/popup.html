@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extension Popup</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <h1>Extension Template</h1>
+    <div class="section">
+      <h3>Current Tab Info</h3>
+      <div id="tab-info">Loading...</div>
+    </div>
+    
+    <div class="section">
+      <h3>Actions</h3>
+      <button id="highlight-btn" class="action-btn">Highlight Selected Text</button>
+      <button id="get-info-btn" class="action-btn">Get Page Info</button>
+    </div>
+    
+    <div class="section">
+      <h3>Settings</h3>
+      <label class="checkbox-container">
+        <input type="checkbox" id="enabled-checkbox">
+        <span class="checkmark"></span>
+        Extension Enabled
+      </label>
+      
+      <div class="theme-selector">
+        <label for="theme-select">Theme:</label>
+        <select id="theme-select">
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+    </div>
+    
+    <div class="section">
+      <div id="status" class="status"></div>
+    </div>
+  </div>
+  
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
