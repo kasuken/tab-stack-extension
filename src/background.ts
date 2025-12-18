@@ -27,18 +27,24 @@ const tabIndex: TabIndex = {
 // Track tab metadata (creation time, etc.)
 const tabMetadata = new Map<number, TabMetadata>()
 
+// Storage key for persisting metadata
+const METADATA_STORAGE_KEY = 'tabstack_metadata'
+
 // Initialize tab index on startup
 initializeTabIndex()
 
 async function initializeTabIndex(): Promise<void> {
   try {
+    // Load persisted metadata from storage
+    await loadMetadataFromStorage()
+    
     const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] })
     const now = Date.now()
     
     for (const window of windows) {
       const tabs = window.tabs || []
       
-      // Initialize metadata for existing tabs
+      // Initialize metadata for existing tabs (only if not already persisted)
       tabs.forEach(tab => {
         if (tab.id && !tabMetadata.has(tab.id)) {
           tabMetadata.set(tab.id, {
@@ -58,8 +64,41 @@ async function initializeTabIndex(): Promise<void> {
     tabIndex.lastUpdated = Date.now()
     console.log('Tab index initialized:', tabIndex.windows.size, 'windows')
     console.log('Tab metadata initialized for', tabMetadata.size, 'tabs')
+    
+    // Save metadata after initialization
+    await saveMetadataToStorage()
   } catch (error) {
     console.error('Error initializing tab index:', error)
+  }
+}
+
+// Load metadata from storage
+async function loadMetadataFromStorage(): Promise<void> {
+  try {
+    const result = await chrome.storage.local.get(METADATA_STORAGE_KEY)
+    if (result[METADATA_STORAGE_KEY]) {
+      const stored = result[METADATA_STORAGE_KEY] as Record<string, TabMetadata>
+      Object.entries(stored).forEach(([tabId, metadata]) => {
+        tabMetadata.set(parseInt(tabId), metadata)
+      })
+      console.log('Loaded metadata from storage:', tabMetadata.size, 'tabs')
+    }
+  } catch (error) {
+    console.error('Error loading metadata from storage:', error)
+  }
+}
+
+// Save metadata to storage
+async function saveMetadataToStorage(): Promise<void> {
+  try {
+    const metadata: Record<number, TabMetadata> = {}
+    tabMetadata.forEach((value, key) => {
+      metadata[key] = value
+    })
+    await chrome.storage.local.set({ [METADATA_STORAGE_KEY]: metadata })
+    console.log('Saved metadata to storage:', Object.keys(metadata).length, 'tabs')
+  } catch (error) {
+    console.error('Error saving metadata to storage:', error)
   }
 }
 
@@ -103,6 +142,7 @@ chrome.tabs.onCreated.addListener((tab) => {
         createdAt: Date.now(),
         lastAccessed: tab.active ? Date.now() : undefined
       })
+      saveMetadataToStorage() // Persist to storage
     }
     
     tabIndex.lastUpdated = Date.now()
@@ -118,6 +158,7 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
   
   // Clean up metadata
   tabMetadata.delete(tabId)
+  saveMetadataToStorage() // Persist to storage
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -131,6 +172,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       if (tab.active) {
         const metadata = tabMetadata.get(tabId)
         if (metadata) {
+          saveMetadataToStorage() // Persist to storage
           metadata.lastAccessed = Date.now()
         }
       }
