@@ -196,49 +196,195 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
 
 // Message handler
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === 'search') {
-    const results = searchTabs(request.query)
-    sendResponse({ type: 'searchResults', results })
-    return true
-  }
+  // Keep service worker alive for async operations
+  (async () => {
+    try {
+      if (request.type === 'search') {
+        const results = searchTabs(request.query)
+        sendResponse({ type: 'searchResults', results })
+        return
+      }
+      
+      if (request.type === 'focusTab') {
+        await chrome.tabs.update(request.tabId, { active: true })
+        await chrome.windows.update(request.windowId, { focused: true })
+        sendResponse({ type: 'success' })
+        return
+      }
+      
+      if (request.type === 'closeTab') {
+        await chrome.tabs.remove(request.tabId)
+        sendResponse({ type: 'success' })
+        return
+      }
+      
+      if (request.type === 'closeTabs') {
+        await chrome.tabs.remove(request.tabIds)
+        sendResponse({ type: 'success' })
+        return
+      }
+      
+      if (request.type === 'getIndex') {
+        const results = Array.from(tabIndex.windows.values())
+        sendResponse({ type: 'indexUpdate', results })
+        return
+      }
+      
+      if (request.type === 'getMetadata') {
+        const metadata: Record<number, TabMetadata> = {}
+        tabMetadata.forEach((value, key) => {
+          metadata[key] = value
+        })
+        console.log('Sending metadata for', Object.keys(metadata).length, 'tabs')
+        sendResponse({ type: 'metadata', metadata })
+        return
+      }
+      
+      if (request.type === 'addToFavorites') {
+        console.log('Background received addToFavorites request:', request.tabIds)
+        try {
+          const result = await addTabsToFavorites(request.tabIds)
+          console.log('addTabsToFavorites succeeded:', result)
+          sendResponse({ type: 'success', ...result })
+        } catch (error) {
+          console.error('addTabsToFavorites failed:', error)
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          sendResponse({ type: 'error', message: errorMessage })
+        }
+        return
+      }
+    } catch (error) {
+      console.error('Message handler error:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      sendResponse({ type: 'error', message: errorMessage })
+    }
+  })()
   
-  if (request.type === 'focusTab') {
-    chrome.tabs.update(request.tabId, { active: true })
-      .then(() => chrome.windows.update(request.windowId, { focused: true }))
-      .then(() => sendResponse({ type: 'success' }))
-      .catch(error => sendResponse({ type: 'error', message: error.message }))
-    return true
-  }
-  
-  if (request.type === 'closeTab') {
-    chrome.tabs.remove(request.tabId)
-      .then(() => sendResponse({ type: 'success' }))
-      .catch(error => sendResponse({ type: 'error', message: error.message }))
-    return true
-  }
-  
-  if (request.type === 'closeTabs') {
-    chrome.tabs.remove(request.tabIds)
-      .then(() => sendResponse({ type: 'success' }))
-      .catch(error => sendResponse({ type: 'error', message: error.message }))
-    return true
-  }
-  
-  if (request.type === 'getIndex') {
-    const results = Array.from(tabIndex.windows.values())
-    sendResponse({ type: 'indexUpdate', results })
-    return true
-  }
-  
-  if (request.type === 'getMetadata') {
-    const metadata: Record<number, TabMetadata> = {}
-    tabMetadata.forEach((value, key) => {
-      metadata[key] = value
-    })
-    console.log('Sending metadata for', Object.keys(metadata).length, 'tabs')
-    sendResponse({ type: 'metadata', metadata })
-    return true
-  }
+  // Return true to indicate async response
+  return true
 })
+
+// Add tabs to favorites (bookmarks)
+async function addTabsToFavorites(tabIds: number[]): Promise<{ addedCount: number, skippedCount: number, dateFolder: string }> {
+  console.log('Starting addTabsToFavorites with tabIds:', tabIds)
+  
+  // Get all tabs info
+  const tabs: chrome.tabs.Tab[] = []
+  for (const tabId of tabIds) {
+    try {
+      const tab = await chrome.tabs.get(tabId)
+      tabs.push(tab)
+    } catch (error) {
+      console.error(`Tab ${tabId} not found:`, error)
+    }
+  }
+  
+  console.log('Retrieved tabs:', tabs.length)
+  
+  if (tabs.length === 0) {
+    throw new Error('No valid tabs to add to favorites')
+  }
+  
+  // Format date as yyyy-mm-dd
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const dateFolder = `${year}-${month}-${day}`
+  
+  console.log('Date folder:', dateFolder)
+  
+  // Find or create TabStack folder
+  const bookmarksTree = await chrome.bookmarks.getTree()
+  console.log('Bookmarks tree retrieved:', bookmarksTree)
+  
+  // Get the second folder (index 1) from root, which is typically "Other Bookmarks"
+  // Root structure: children[0]=bookmarks bar, children[1]=other bookmarks, children[2]=mobile bookmarks
+  let otherBookmarksId: string | undefined
+  
+  if (bookmarksTree[0] && bookmarksTree[0].children && bookmarksTree[0].children.length > 1) {
+    const otherBookmarksNode = bookmarksTree[0].children[1]
+    otherBookmarksId = otherBookmarksNode.id
+    console.log('Found second bookmarks folder:', otherBookmarksNode.title, 'ID:', otherBookmarksId)
+  }
+  
+  if (!otherBookmarksId) {
+    throw new Error('Could not find Other Bookmarks folder')
+  }
+  
+  console.log('Using folder ID:', otherBookmarksId)
+  
+  // Search for existing TabStack folder
+  let tabStackFolder: chrome.bookmarks.BookmarkTreeNode | null = null
+  const otherBookmarksChildren = await chrome.bookmarks.getChildren(otherBookmarksId)
+  console.log('Folder children:', otherBookmarksChildren)
+  
+  tabStackFolder = otherBookmarksChildren.find(node => node.title === 'TabStack' && !node.url) || null
+  
+  // Create TabStack folder if it doesn't exist
+  if (!tabStackFolder) {
+    console.log('Creating TabStack folder')
+    tabStackFolder = await chrome.bookmarks.create({
+      parentId: otherBookmarksId,
+      title: 'TabStack'
+    })
+    console.log('Created TabStack folder:', tabStackFolder)
+  } else {
+    console.log('Found existing TabStack folder:', tabStackFolder)
+  }
+  
+  if (!tabStackFolder || !tabStackFolder.id) {
+    throw new Error('Failed to create or find TabStack folder')
+  }
+  
+  // Find or create date folder
+  const tabStackContents = await chrome.bookmarks.getChildren(tabStackFolder.id)
+  console.log('TabStack contents:', tabStackContents)
+  
+  let dateNode = tabStackContents.find(node => node.title === dateFolder && !node.url) || null
+  
+  if (!dateNode) {
+    console.log('Creating date folder:', dateFolder)
+    dateNode = await chrome.bookmarks.create({
+      parentId: tabStackFolder.id,
+      title: dateFolder
+    })
+    console.log('Created date folder:', dateNode)
+  } else {
+    console.log('Found existing date folder:', dateNode)
+  }
+  
+  if (!dateNode || !dateNode.id) {
+    throw new Error('Failed to create or find date folder')
+  }
+  
+  // Add each tab as a bookmark
+  let addedCount = 0
+  let skippedCount = 0
+  
+  for (const tab of tabs) {
+    if (tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://') && !tab.url.startsWith('edge://')) {
+      try {
+        await chrome.bookmarks.create({
+          parentId: dateNode.id,
+          title: tab.title || 'Untitled',
+          url: tab.url
+        })
+        addedCount++
+        console.log('Added bookmark:', tab.title)
+      } catch (err) {
+        console.error('Error creating bookmark for tab:', tab.title, err)
+        skippedCount++
+      }
+    } else {
+      console.log('Skipping system page:', tab.url)
+      skippedCount++
+    }
+  }
+  
+  console.log(`Added ${addedCount} bookmarks, skipped ${skippedCount}`)
+  
+  return { addedCount, skippedCount, dateFolder }
+}
 
 export {}

@@ -5,7 +5,8 @@
   "description": "Advanced tab manager with smart search, grouping, and bulk operations",
   "permissions": [
     "tabs",
-    "storage"
+    "storage",
+    "bookmarks"
   ],
   "action": {
     "default_popup": "popup.html",

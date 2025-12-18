@@ -9,6 +9,7 @@ A powerful Chrome/Edge extension for managing browser tabs with smart search, gr
 - ⚡ **Quick Actions** - Focus, close, or bulk manage tabs with ease
 - 🔄 **Real-time Sync** - Automatic updates as tabs are created, moved, or closed
 - 🎯 **Bulk Operations** - Select multiple tabs and close them in one action
+- ⭐ **Save to Favorites** - Add selected tabs to bookmarks organized by date
 - 📱 **Dual Interface** - Fast popup for quick access + full dashboard for power users
 - 🚀 **Fast Development** - Powered by Vite for instant hot reload
 - 📦 **TypeScript** - Full TypeScript support with strict typing
@@ -164,6 +165,12 @@ Access the dashboard by:
   - ☑️ Select individual tabs or use "Select All" for entire windows
   - ✕ "Close Selected" - Close all selected tabs at once
   - 🪟 "Move to New Window" - Move selected tabs to a new browser window
+  - ⭐ **"Add to Favorites"** - Save 3+ selected tabs to bookmarks (appears when >2 tabs selected)
+- **Favorites Organization**:
+  - Automatically creates `TabStack` folder in "Other Bookmarks"
+  - Organizes saved tabs by date (YYYY-MM-DD format)
+  - Example structure: `Other Bookmarks → TabStack → 2025-12-18 → [Your Tabs]`
+  - Filters out system pages (chrome://, edge://) that cannot be bookmarked
 - **Window Management**: 
   - View tabs organized by window
   - Close entire windows
@@ -306,7 +313,8 @@ The extension manifest defines:
 {
   "permissions": [
     "tabs",      // Required for tab querying and management
-    "storage"    // For user preferences and settings
+    "storage",   // For user preferences and settings
+    "bookmarks"  // For saving tabs to favorites
   ]
 }
 ```

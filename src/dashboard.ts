@@ -26,6 +26,7 @@ interface MetadataResponse {
 const searchInput = document.getElementById('search-input') as HTMLInputElement
 const totalTabsStat = document.getElementById('total-tabs-stat') as HTMLSpanElement
 const totalWindowsStat = document.getElementById('total-windows-stat') as HTMLSpanElement
+const addToFavoritesBtn = document.getElementById('add-to-favorites-btn') as HTMLButtonElement
 const selectModeBtn = document.getElementById('select-mode-btn') as HTMLButtonElement
 const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement
 const bulkActionsBar = document.getElementById('bulk-actions-bar') as HTMLDivElement
@@ -107,6 +108,14 @@ function setupEventListeners(): void {
     }
     
     renderResults(currentResults, searchQuery)
+  })
+  
+  // Add to Favorites
+  addToFavoritesBtn.addEventListener('click', async () => {
+    const tabIds = Array.from(selectedTabIds)
+    if (tabIds.length > 2) {
+      await addTabsToFavorites(tabIds)
+    }
   })
   
   // Refresh
@@ -191,6 +200,13 @@ function updateBulkActionsBar(): void {
     selectedCount.textContent = `${count} tab${count !== 1 ? 's' : ''} selected`
   } else {
     bulkActionsBar.style.display = 'none'
+  }
+  
+  // Show/hide Add to Favorites button
+  if (count > 2) {
+    addToFavoritesBtn.style.display = 'flex'
+  } else {
+    addToFavoritesBtn.style.display = 'none'
   }
 }
 
@@ -478,6 +494,55 @@ function formatTimeAgo(timestamp: number): string {
   if (days < 7) return `${days}d ago`
   if (weeks < 4) return `${weeks}w ago`
   return `${months}mo ago`
+}
+
+// Add tabs to favorites (bookmarks)
+async function addTabsToFavorites(tabIds: number[]): Promise<void> {
+  try {
+    console.log('Requesting background script to add tabs to favorites:', tabIds)
+    
+    const response = await sendMessage({ type: 'addToFavorites', tabIds })
+    console.log('Response from background:', response)
+    
+    if (!response) {
+      throw new Error('No response from background script')
+    }
+    
+    if (response.type === 'error') {
+      console.error('Error response:', response)
+      throw new Error(response.message || 'Unknown error from background script')
+    }
+    
+    if (response.type === 'success') {
+      const { addedCount, skippedCount, dateFolder } = response
+      
+      if (addedCount > 0) {
+        alert(`✅ Added ${addedCount} tab${addedCount !== 1 ? 's' : ''} to favorites\n\nLocation: TabStack/${dateFolder}${skippedCount > 0 ? `\n\n(Skipped ${skippedCount} system page${skippedCount !== 1 ? 's' : ''})` : ''}`)
+        
+        // Clear selection
+        selectedTabIds.clear()
+        updateBulkActionsBar()
+        renderResults(currentResults, searchQuery)
+      } else {
+        alert('⚠️ No valid tabs to bookmark (system pages cannot be bookmarked)')
+      }
+    } else {
+      throw new Error(`Unexpected response type: ${response.type}`)
+    }
+  } catch (error) {
+    console.error('Error adding tabs to favorites:', error)
+    let errorMessage = 'Unknown error'
+    
+    if (error instanceof Error) {
+      errorMessage = error.message
+    } else if (typeof error === 'string') {
+      errorMessage = error
+    } else if (error && typeof error === 'object') {
+      errorMessage = JSON.stringify(error, null, 2)
+    }
+    
+    alert(`❌ Error adding tabs to favorites:\n${errorMessage}\n\nCheck browser console (F12) for details.`)
+  }
 }
 
 export {}
