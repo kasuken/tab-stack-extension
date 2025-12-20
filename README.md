@@ -1,5 +1,8 @@
 # TabStack - Advanced Tab Manager
 
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/gbmblbgpkpelpekdfoefpgdogopenohh?label=Chrome%20Web%20Store)](https://chromewebstore.google.com/detail/gbmblbgpkpelpekdfoefpgdogopenohh/preview?hl=it&authuser=0)
+[![Edge Add-ons](https://img.shields.io/badge/Edge%20Add--ons-coming%20soon-blue)](https://microsoftedge.microsoft.com/addons/)
+
 A powerful Chrome/Edge extension for managing browser tabs with smart search, grouping, and bulk operations. Built with TypeScript and Vite.
 
 ## Features
